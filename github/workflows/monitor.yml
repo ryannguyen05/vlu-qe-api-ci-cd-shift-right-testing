@@ -1,0 +1,46 @@
+name: API Performance Monitor
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Chạy tự động mỗi giờ
+  workflow_dispatch:    # Cho phép kích hoạt thủ công từ tab Actions
+
+jobs:
+  check-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test GET /users and check response time
+        run: |
+          # Thay thế URL bên dưới bằng endpoint GET /users thực tế của bạn (ví dụ GoRest API)
+          API_URL="https://gorest.co.in/public/v2/users"
+          
+          echo "Đang kiểm tra API: $API_URL"
+          
+          # Lấy HTTP Status Code và thời gian tổng (time_total tính bằng giây)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL")
+          TIME_TOTAL=$(curl -s -o /dev/null -w "%{time_total}" "$API_URL")
+          
+          # Chuyển đổi thời gian sang mili-giây để dễ đọc log
+          TIME_MS=$(awk -v t="$TIME_TOTAL" 'BEGIN {printf "%.0f", t * 1000}')
+          
+          echo "HTTP Status Code: $HTTP_CODE"
+          echo "Thời gian phản hồi: ${TIME_MS}ms (${TIME_TOTAL}s)"
+          
+          # 1. Kiểm tra HTTP Status có thành công không (200 OK)
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "Lỗi: API trả về mã trạng thái không hợp lệ ($HTTP_CODE)."
+            exit 1
+          fi
+          
+          # 2. Kiểm tra điều kiện: Thời gian phản hồi phải dưới 800ms (0.8 giây)
+          IS_UNDER_800MS=$(awk -v t="$TIME_TOTAL" 'BEGIN {print (t < 0.8) ? 1 : 0}')
+          
+          if [ "$IS_UNDER_800MS" -eq 1 ]; then
+            echo "Thành công: Thời gian phản hồi đạt yêu cầu (< 800ms)."
+          else
+            echo "Cảnh báo: Thời gian phản hồi vượt quá ngưỡng cho phép (${TIME_MS}ms >= 800ms)."
+            exit 1
+          fi
